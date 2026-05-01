@@ -377,7 +377,7 @@ function App() {
 
   async function openRecent(item: RecentFile) {
     if (!window.docforge) {
-      setStatus("Recent shortcuts are available in the desktop app");
+      setStatus("Native file bridge unavailable; restart the desktop app");
       return;
     }
 

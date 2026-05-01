@@ -12,7 +12,7 @@
     "pack": "npm run build && npm run clean:release && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "build": "tsc --noEmit && vite build && npm run build:electron",
-    "build:electron": "node -e \"fs.rmSync('dist-electron',{recursive:true,force:true});fs.rmSync('tsconfig.node.tsbuildinfo',{force:true})\" && tsc -p tsconfig.node.json",
+    "build:electron": "node -e \"fs.rmSync('dist-electron',{recursive:true,force:true});fs.rmSync('tsconfig.node.tsbuildinfo',{force:true})\" && tsc -p tsconfig.node.json && node -e \"fs.copyFileSync('electron/preload.cjs','dist-electron/preload.cjs')\"",
     "test": "vitest run",
     "test:watch": "vitest"
   },

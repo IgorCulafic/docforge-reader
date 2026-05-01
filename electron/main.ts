@@ -49,7 +49,7 @@ async function createWindow() {
     title: "DocForge Reader",
     backgroundColor: "#f5f4ef",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
