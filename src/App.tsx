@@ -48,8 +48,10 @@ import { searchDocuments, searchText } from "./lib/search";
 import { applyTextFormat, type TextFormatCommand } from "./lib/textFormatting";
 import {
   clampSidebarWidth,
+  clampPageZoom,
   clampZoom,
   defaultSidebarWidths,
+  nextPageZoomFromWheel,
   nextZoomFromWheel,
   resetSidebarWidths,
   type SidebarSide,
@@ -85,6 +87,7 @@ Supported editable formats include TXT, Markdown, HTML, JSON, XML, and CSV. PDF,
 const recentStorageKey = "docforge.recent";
 const themeStorageKey = "docforge.theme";
 const textZoomStorageKey = "docforge.textZoom";
+const pageZoomStorageKey = "docforge.pageZoom";
 const sidebarWidthsStorageKey = "docforge.sidebarWidths";
 const draftPrefix = "docforge.draft.";
 
@@ -105,6 +108,7 @@ function App() {
   const missingRemovalTimers = useRef(new Map<string, number>());
   const [promotedRecentPath, setPromotedRecentPath] = useState<string | null>(null);
   const [textZoom, setTextZoom] = useState(loadTextZoom);
+  const [pageZoom, setPageZoom] = useState(loadPageZoom);
   const [sidebarWidths, setSidebarWidths] = useState<SidebarWidths>(loadSidebarWidths);
   const resizeState = useRef<{ side: SidebarSide; startX: number; startWidth: number } | null>(null);
 
@@ -133,6 +137,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(textZoomStorageKey, String(textZoom));
   }, [textZoom]);
+
+  useEffect(() => {
+    localStorage.setItem(pageZoomStorageKey, String(pageZoom));
+  }, [pageZoom]);
 
   useEffect(() => {
     localStorage.setItem(sidebarWidthsStorageKey, JSON.stringify(sidebarWidths));
@@ -497,16 +505,24 @@ function App() {
   }
 
   function onDocumentWheel(event: ReactWheelEvent<HTMLElement>) {
-    if (!event.shiftKey) {
+    if (event.ctrlKey) {
+      event.preventDefault();
+      setPageZoom((current) => nextPageZoomFromWheel(current, event.deltaY));
       return;
     }
 
-    event.preventDefault();
-    setTextZoom((current) => nextZoomFromWheel(current, event.deltaY));
+    if (event.shiftKey) {
+      event.preventDefault();
+      setTextZoom((current) => nextZoomFromWheel(current, event.deltaY));
+    }
   }
 
   function adjustTextZoom(delta: number) {
     setTextZoom((current) => clampZoom(Math.round((current + delta) * 10) / 10));
+  }
+
+  function adjustPageZoom(delta: number) {
+    setPageZoom((current) => clampPageZoom(Math.round((current + delta) * 10) / 10));
   }
 
   function startSidebarResize(side: SidebarSide, event: ReactPointerEvent<HTMLDivElement>) {
@@ -556,7 +572,8 @@ function App() {
     "--left-sidebar-width": `${sidebarWidths.left}px`,
     "--right-sidebar-width": `${sidebarWidths.right}px`,
     "--editor-font-size": `${14 * textZoom}px`,
-    "--preview-font-size": `${17 * textZoom}px`
+    "--preview-font-size": `${17 * textZoom}px`,
+    "--page-zoom": pageZoom
   } as CSSProperties;
 
   return (
@@ -608,6 +625,17 @@ function App() {
               {Math.round(textZoom * 100)}%
             </button>
             <button type="button" className="icon-button" onClick={() => adjustTextZoom(0.1)} title="Zoom text in">
+              <ZoomIn size={17} />
+            </button>
+          </div>
+          <div className="zoom-controls" aria-label="Page width zoom">
+            <button type="button" className="icon-button" onClick={() => adjustPageZoom(-0.1)} title="Narrow page">
+              <ZoomOut size={17} />
+            </button>
+            <button type="button" className="zoom-indicator" onClick={() => setPageZoom(1)} title="Reset page width">
+              {Math.round(pageZoom * 100)}%
+            </button>
+            <button type="button" className="icon-button" onClick={() => adjustPageZoom(0.1)} title="Widen page">
               <ZoomIn size={17} />
             </button>
           </div>
@@ -1055,6 +1083,11 @@ function saveRecentItems(items: RecentFile[]) {
 function loadTextZoom(): number {
   const parsed = Number(localStorage.getItem(textZoomStorageKey));
   return Number.isFinite(parsed) && parsed > 0 ? clampZoom(parsed) : 1;
+}
+
+function loadPageZoom(): number {
+  const parsed = Number(localStorage.getItem(pageZoomStorageKey));
+  return Number.isFinite(parsed) && parsed > 0 ? clampPageZoom(parsed) : 1;
 }
 
 function loadSidebarWidths(): SidebarWidths {

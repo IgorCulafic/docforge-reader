@@ -13,6 +13,8 @@ export const defaultSidebarWidths: SidebarWidths = {
 const zoomStep = 0.1;
 const minZoom = 0.7;
 const maxZoom = 2;
+const minPageZoom = 0.6;
+const maxPageZoom = 3;
 
 const sidebarLimits: Record<SidebarSide, { min: number; max: number }> = {
   left: { min: 220, max: 520 },
@@ -26,6 +28,15 @@ export function clampZoom(value: number): number {
 export function nextZoomFromWheel(current: number, deltaY: number): number {
   const direction = deltaY < 0 ? 1 : -1;
   return clampZoom(roundToStep(current + direction * zoomStep));
+}
+
+export function clampPageZoom(value: number): number {
+  return clamp(value, minPageZoom, maxPageZoom);
+}
+
+export function nextPageZoomFromWheel(current: number, deltaY: number): number {
+  const direction = deltaY < 0 ? 1 : -1;
+  return clampPageZoom(roundToStep(current + direction * zoomStep));
 }
 
 export function clampSidebarWidth(side: SidebarSide, width: number): number {

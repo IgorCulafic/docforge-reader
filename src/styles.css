@@ -625,7 +625,8 @@ button {
 }
 
 .formatted-docx {
-  max-width: 840px;
+  width: calc(840px * var(--page-zoom, 1));
+  max-width: none;
   min-height: calc(100% - 48px);
   margin: 0 auto;
   padding: 54px 64px;
@@ -696,13 +697,16 @@ button {
 }
 
 .pdf-image-page {
+  width: calc(var(--pdf-page-width, 765px) * var(--page-zoom, 1));
+  max-width: none;
   background: #ffffff;
   box-shadow: var(--shadow);
 }
 
 .pdf-image-page img {
   display: block;
-  max-width: min(100%, 1120px);
+  width: 100%;
+  max-width: none;
   height: auto;
 }
 

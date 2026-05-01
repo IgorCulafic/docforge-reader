@@ -1,6 +1,6 @@
 import pdfWorkerSrc from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 
-export async function renderPdfPagesAsImages(data: Uint8Array): Promise<string> {
+export async function renderPdfPagesAsImages(data: Uint8Array, qualityScale = 3): Promise<string> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
@@ -12,7 +12,8 @@ export async function renderPdfPagesAsImages(data: Uint8Array): Promise<string> 
   const pages: string[] = [];
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: 1.6 });
+    const displayViewport = page.getViewport({ scale: 1.25 });
+    const renderViewport = page.getViewport({ scale: 1.25 * qualityScale });
     const canvas = globalThis.document.createElement("canvas");
     const context = canvas.getContext("2d");
 
@@ -20,12 +21,12 @@ export async function renderPdfPagesAsImages(data: Uint8Array): Promise<string> 
       continue;
     }
 
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    await page.render({ canvas, canvasContext: context, viewport }).promise;
+    canvas.width = Math.ceil(renderViewport.width);
+    canvas.height = Math.ceil(renderViewport.height);
+    await page.render({ canvas, canvasContext: context, viewport: renderViewport }).promise;
 
     pages.push(
-      `<section class="pdf-image-page"><img src="${canvas.toDataURL("image/png")}" alt="PDF page ${pageNumber}" /></section>`
+      `<section class="pdf-image-page" style="--pdf-page-width: ${Math.ceil(displayViewport.width)}px"><img src="${canvas.toDataURL("image/png")}" width="${Math.ceil(displayViewport.width)}" height="${Math.ceil(displayViewport.height)}" alt="PDF page ${pageNumber}" /></section>`
     );
   }
 
