@@ -1,0 +1,63 @@
+{
+  "name": "docforge-reader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "start": "npm run desktop",
+    "dev": "vite --host 127.0.0.1",
+    "desktop": "npm run build && electron .",
+    "clean:release": "node -e \"fs.rmSync('release',{recursive:true,force:true})\"",
+    "pack": "npm run build && npm run clean:release && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "build": "tsc --noEmit && vite build && npm run build:electron",
+    "build:electron": "node -e \"fs.rmSync('dist-electron',{recursive:true,force:true});fs.rmSync('tsconfig.node.tsbuildinfo',{force:true})\" && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "build": {
+    "appId": "com.docforge.reader",
+    "productName": "DocForge Reader",
+    "executableName": "DocForgeReader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "^5.7.284",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
+    "electron": "^38.0.0",
+    "electron-builder": "^25.1.8",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}
