@@ -35,6 +35,7 @@ import { readBrowserDocumentData } from "./lib/browserDocumentReaders";
 import { calculateDocumentStats, formatBytes } from "./lib/documentStats";
 import { getFormatProfile, isSupportedFile, type FormatProfile } from "./lib/documentTypes";
 import { createExportPayload, exportFormats, type ExportFormat } from "./lib/exporters";
+import { getEditorShortcutCommand } from "./lib/keyboardShortcuts";
 import { base64ToBytes, renderPdfPagesAsImages } from "./lib/pdfPageRenderer";
 import {
   markRecentMissing,
@@ -60,6 +61,7 @@ import {
 
 type Theme = "light" | "dark";
 type WorkspaceMode = "edit" | "read" | "split" | "focus";
+type SidebarView = "files" | "history";
 
 interface AppDocument {
   id: string;
@@ -101,6 +103,7 @@ function App() {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem(themeStorageKey) as Theme) || "light");
   const [query, setQuery] = useState("");
   const [globalQuery, setGlobalQuery] = useState("");
+  const [sidebarView, setSidebarView] = useState<SidebarView>("files");
   const [selectedExport, setSelectedExport] = useState<ExportFormat>("txt");
   const [status, setStatus] = useState("Ready");
   const [isDragging, setIsDragging] = useState(false);
@@ -241,9 +244,25 @@ function App() {
         return;
       }
 
+      const editorCommand = getEditorShortcutCommand(event);
+      if (editorCommand && activeDocument?.profile.editMode !== "readOnly") {
+        event.preventDefault();
+        formatActiveText(editorCommand);
+        return;
+      }
+
+      if (event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        void createNewFile();
+      }
+
       if (event.key.toLowerCase() === "s") {
         event.preventDefault();
-        void saveActiveDocument();
+        if (event.shiftKey) {
+          void exportActiveDocument();
+        } else {
+          void saveActiveDocument();
+        }
       }
 
       if (event.key.toLowerCase() === "o") {
@@ -357,16 +376,13 @@ function App() {
   }
 
   async function openRecent(item: RecentFile) {
-    if (item.missing) {
-      return;
-    }
-
     if (!window.docforge) {
       setStatus("Recent shortcuts are available in the desktop app");
       return;
     }
 
     try {
+      setStatus(`Opening ${item.name}`);
       const opened = await window.docforge.readPaths([item.path]);
 
       if (opened.length === 0) {
@@ -375,8 +391,9 @@ function App() {
       }
 
       addDocuments(opened.map(fromNativeRecord));
-    } catch {
+    } catch (error) {
       markMissingRecent(item.path, item.name);
+      setStatus(`Recent open failed: ${errorMessage(error)}`);
     }
   }
 
@@ -599,11 +616,11 @@ function App() {
         </div>
 
         <div className="toolbar-actions">
-          <button type="button" className="tool-button" onClick={createNewFile} title="Create new file">
+          <button type="button" className="tool-button" onClick={createNewFile} title="New file (Ctrl+N)">
             <Plus size={17} />
             <span>New File</span>
           </button>
-          <button type="button" className="tool-button" onClick={openFiles} title="Open files">
+          <button type="button" className="tool-button" onClick={openFiles} title="Open files (Ctrl+O)">
             <Upload size={17} />
             <span>Open File</span>
           </button>
@@ -611,31 +628,31 @@ function App() {
             <FolderOpen size={17} />
             <span>Open Folder</span>
           </button>
-          <button type="button" className="icon-button" onClick={saveActiveDocument} title="Save">
+          <button type="button" className="icon-button" onClick={saveActiveDocument} title="Save (Ctrl+S)">
             <Save size={18} />
           </button>
-          <button type="button" className="icon-button" onClick={() => void exportActiveDocument()} title="Export">
+          <button type="button" className="icon-button" onClick={() => void exportActiveDocument()} title="Export (Ctrl+Shift+S)">
             <FileDown size={18} />
           </button>
           <div className="zoom-controls" aria-label="Text zoom">
-            <button type="button" className="icon-button" onClick={() => adjustTextZoom(-0.1)} title="Zoom text out">
+            <button type="button" className="icon-button" onClick={() => adjustTextZoom(-0.1)} title="Zoom text out (Shift+wheel down)">
               <ZoomOut size={17} />
             </button>
             <button type="button" className="zoom-indicator" onClick={() => setTextZoom(1)} title="Reset text zoom">
               {Math.round(textZoom * 100)}%
             </button>
-            <button type="button" className="icon-button" onClick={() => adjustTextZoom(0.1)} title="Zoom text in">
+            <button type="button" className="icon-button" onClick={() => adjustTextZoom(0.1)} title="Zoom text in (Shift+wheel up)">
               <ZoomIn size={17} />
             </button>
           </div>
           <div className="zoom-controls" aria-label="Page width zoom">
-            <button type="button" className="icon-button" onClick={() => adjustPageZoom(-0.1)} title="Narrow page">
+            <button type="button" className="icon-button" onClick={() => adjustPageZoom(-0.1)} title="Narrow page (Ctrl+wheel down)">
               <ZoomOut size={17} />
             </button>
             <button type="button" className="zoom-indicator" onClick={() => setPageZoom(1)} title="Reset page width">
               {Math.round(pageZoom * 100)}%
             </button>
-            <button type="button" className="icon-button" onClick={() => adjustPageZoom(0.1)} title="Widen page">
+            <button type="button" className="icon-button" onClick={() => adjustPageZoom(0.1)} title="Widen page (Ctrl+wheel up)">
               <ZoomIn size={17} />
             </button>
           </div>
@@ -653,72 +670,103 @@ function App() {
       <section className="workspace" style={workspaceStyle}>
         <aside className="sidebar">
           <div className="panel-heading">
-            <Sidebar size={17} />
-            <span>Files</span>
-          </div>
-
-          <label className="search-box">
-            <Search size={15} />
-            <input
-              value={globalQuery}
-              onChange={(event) => setGlobalQuery(event.target.value)}
-              placeholder="Search folder"
-            />
-          </label>
-
-          <div className="file-list">
-            {documents.map((document) => (
+            <div className="sidebar-tabs" role="tablist" aria-label="Sidebar view">
               <button
                 type="button"
-                key={document.id}
-                className={`file-row ${document.id === activeId ? "is-active" : ""}`}
-                onClick={() => setActiveId(document.id)}
+                role="tab"
+                className={sidebarView === "files" ? "is-active" : ""}
+                onClick={() => setSidebarView("files")}
+                title="Show open files"
               >
-                <FileText size={16} />
-                <span>{document.name}</span>
-                {document.dirty && <em />}
+                <Sidebar size={16} />
+                <span>Files</span>
               </button>
-            ))}
+              <button
+                type="button"
+                role="tab"
+                className={sidebarView === "history" ? "is-active" : ""}
+                onClick={() => setSidebarView("history")}
+                title="Show recent file history"
+              >
+                <History size={16} />
+                <span>History</span>
+              </button>
+            </div>
           </div>
 
-          {globalQuery && (
-            <div className="search-results">
-              <small>{globalMatches.length} global matches</small>
-              {globalMatches.slice(0, 10).map((match) => (
-                <button type="button" key={`${match.documentId}-${match.line}-${match.column}`} onClick={() => setActiveId(match.documentId)}>
-                  <strong>{match.name}</strong>
-                  <span>
-                    {match.line}:{match.column} {match.preview}
-                  </span>
-                </button>
+          {sidebarView === "files" ? (
+            <>
+              <label className="search-box">
+                <Search size={15} />
+                <input
+                  value={globalQuery}
+                  onChange={(event) => setGlobalQuery(event.target.value)}
+                  placeholder="Search folder"
+                  title="Global search across opened files"
+                />
+              </label>
+
+              <div className="file-list">
+                {documents.map((document) => (
+                  <button
+                    type="button"
+                    key={document.id}
+                    className={`file-row ${document.id === activeId ? "is-active" : ""}`}
+                    onClick={() => setActiveId(document.id)}
+                    title={`Switch to ${document.name}`}
+                  >
+                    <FileText size={16} />
+                    <span>{document.name}</span>
+                    {document.dirty && <em />}
+                  </button>
+                ))}
+              </div>
+
+              {globalQuery && (
+                <div className="search-results">
+                  <small>{globalMatches.length} global matches</small>
+                  {globalMatches.slice(0, 10).map((match) => (
+                    <button type="button" key={`${match.documentId}-${match.line}-${match.column}`} onClick={() => setActiveId(match.documentId)}>
+                      <strong>{match.name}</strong>
+                      <span>
+                        {match.line}:{match.column} {match.preview}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="recent-list is-full-height">
+              <div className="recent-heading">
+                <History size={15} />
+                <small>{recentItems.length} recent files</small>
+              </div>
+              {recentItems.length === 0 && <span>No recent files yet</span>}
+              {recentItems.map((item) => (
+                <div
+                  key={item.path}
+                  className={`recent-row ${item.missing ? "is-missing" : ""} ${
+                    item.path === promotedRecentPath ? "is-promoted" : ""
+                  }`}
+                  title={item.path}
+                >
+                  <button type="button" className="recent-open" onClick={() => void openRecent(item)} title={`Open ${item.path}`}>
+                    <FileText size={15} />
+                    <span>{item.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="recent-remove"
+                    onClick={() => removeRecent(item.path)}
+                    title="Remove from history"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
-
-          <div className="recent-list">
-            <div className="recent-heading">
-              <History size={15} />
-              <small>Recent shortcuts</small>
-            </div>
-            {recentItems.length === 0 && <span>No recent files yet</span>}
-            {recentItems.slice(0, 12).map((item) => (
-              <div
-                key={item.path}
-                className={`recent-row ${item.missing ? "is-missing" : ""} ${
-                  item.path === promotedRecentPath ? "is-promoted" : ""
-                }`}
-                title={item.path}
-              >
-                <button type="button" className="recent-open" onClick={() => void openRecent(item)}>
-                  <FileText size={15} />
-                  <span>{item.name}</span>
-                </button>
-                <button type="button" className="recent-remove" onClick={() => removeRecent(item.path)} title="Remove from history">
-                  <X size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
         </aside>
 
         <div
@@ -767,34 +815,34 @@ function App() {
               <span>Focus</span>
             </button>
             <div className="format-controls" aria-label="Text formatting">
-              <button type="button" onClick={() => formatActiveText("heading")} title="Heading" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("heading")} title="Heading (Ctrl+Alt+2)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <Heading2 size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("large")} title="Larger text" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("large")} title="Larger text (Ctrl+Shift+.)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <ALargeSmall size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("bold")} title="Bold" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("bold")} title="Bold (Ctrl+B)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <Bold size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("italic")} title="Italic" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("italic")} title="Italic (Ctrl+I)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <Italic size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("underline")} title="Underline" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("underline")} title="Underline (Ctrl+U)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <Underline size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("strike")} title="Strikethrough" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("strike")} title="Strikethrough (Ctrl+Shift+X)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <Strikethrough size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("bulletList")} title="Bullet list" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("bulletList")} title="Bullet list (Ctrl+Shift+8)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <List size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("numberedList")} title="Numbered list" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("numberedList")} title="Numbered list (Ctrl+Shift+7)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <ListOrdered size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("quote")} title="Quote" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("quote")} title="Quote (Ctrl+Shift+9)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <Quote size={16} />
               </button>
-              <button type="button" onClick={() => formatActiveText("code")} title="Inline code" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
+              <button type="button" onClick={() => formatActiveText("code")} title="Inline code (Ctrl+`)" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
                 <Code2 size={16} />
               </button>
               <button type="button" onClick={() => formatActiveText("fontSerif")} title="Serif font" disabled={!activeDocument || activeDocument.profile.editMode === "readOnly"}>
